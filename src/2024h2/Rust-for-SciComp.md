@@ -8,38 +8,51 @@
 
 ## Motivation
 
-Scientific Computing, High Performance Computing, and Machine Learning share the interesting challenge that they (to different degrees)
-care about (very) efficient library and algorithm implementations, but are not always used by people experienced in computer science.
-Rust is in a nice position because Ownership, Lifetimes, and the strong type system can prevent a descent amount of bugs. At the same
-time strong alias information allows very nice performance optimizations in these fields, with performance gains well beyond what you
-see in normal C++ vs. Rust Performance Comparisons. This is the case because these fields often use Automatic Differentiation and GPU/Co-Processor 
-offloading, both cases which benefit strongly from knowing which pointers or references alias. 
+Scientific Computing, High Performance Computing (HPC), and Machine Learning (ML) share several interesting challenges:
+1. Highly efficient library and algorithm implementations are necessary, but are not always used by people experienced in computer science.
+2. Performance-sensitive code often needs to be developed and maintained by people with more domain expertise than computer science experience.
+3. Correct code must satisfy numerical approximations of continuous invariances and stability properties, which are hard to encode in types and hard to reliably unit test.
+4. Algorithms make heavy use of derivatives, so productivity requires differentiable programming.
+5. There is a need for "collective" parallel reasoning for multi-threaded, multi-process, and GPU code.
+
+Rust is attractive because Ownership, Lifetimes, and the strong type system can prevent many bugs that are common to write and expensive to find. At the same
+time strong alias information enables performance gains well beyond what you see in typical C++ vs. Rust performance comparisons because alias analysis due to interaction with Automatic Differentiation and GPU/Co-Processor offloading, where aliasing has both codegen and space consequences.
 
 ### The status quo
 
-Rust has an excellent Pyton InterOp Story thanks to PyO3. C++ has a weak interop story and as such I've seen cases where a slower C library is 
-used as the backend for some Python libraries, because it was easier to bundle. Fortran is mostly used in legacy places and hardly used for new 
-projects. As a solution, many researchers try to limit themself to features which are offered by compilers and libraries build on top of Python,
-like JAX, PyTorch, or newly Mojo. Rust has a lot of features which make it more suitable to develop a fast and reliable backend for performance 
-critical software than those languages. However, it lacks features which developers now got used to. These features are *trivial GPU usage*. 
-Almost every language has some way of calling hand-written CUDA/ROCm/Sycl Kernels, but the interesting feature of languages like Julia, or libraries
-like JAX is that they offer users to write Kernels in a (subset) of their already known language, without having to learn anything new. Minor 
-performance penalties are not that critical in such cases, if the alternative are CPU only solution, because projects like Rust-CUDA end up being unmaintained
-due to beeing too much effort to maintain outside of the LLVM or Rust project. 
+C and C++ are the prevailing implementation language for low-level libraries and performance-sensitive code. In some domains, these C/C++ parts appear in the form of extension modules for Python, which is very popular as a front-end, especially in the ML space. Fortran (in both older and modern dialects) is common for legacy HPC applications, especially in climate and weather simulation and engineering tools, but is increasingly seen as a liability for new projects and its relatively poor support for encapsulation has limited its uptake for libraries. Build systems, portability, and packaging are ever-present challenges for C, C++, and Fortran projects, as well as Python projects that incorporate extension modules.
 
+Rust has an excellent Python interop story thanks to PyO3. C++ is more difficult to call from Python, and some projects stick to older/slower/less featureful C libraries for Python interop simplicity. The popularity of optimizing systems for restricted dialects of Python, such as JAX, PyTorch, and newly Mojo, has increased. The restrictions lead to some surprises and create a schism between these modern ML-focused tools and more general scientific computing (often using adaptive algorithms that are painful to express in the ML-focused tools). Julia embraces JIT compilation and differentiable programming at a core level, which is both a blessing (expressivity) and a curse (maintainability, static analysis).
+
+Rust is attractive for developing performance-critical software in these domains, but lacks a robust numerical/scientific computing library ecosystem and key language support, most notably *trivial GPU usage*.
+Almost every language has some way of calling hand-written CUDA/HIP/SYCL kernels (written in these C++ dialects or pre-compiled to the likes of PTX or SPIR-V), but the interesting feature of languages like Julia and libraries like JAX is that they enable users to write kernels in a (subset) of their familiar host language.
+Minor performance penalties are often tolerable in exploratory or rapidly-changing code, especially when the alternative is CPU-only.
+Rust-CUDA was the closest effort to this for Rust, but it is CUDA-only with its own `rustc_codegen_nvvm`, has been unmaintained for two years, and would be a heavy lift to maintain outside the Rust project or upstream.
+The other major effort in this area is Rust-GPU from Embark, which is more graphics-focused and requires a pinned toolchain and its own `rustc_codegen_spirv`.
 
 *Elaborate in more detail about the problem you are trying to solve. This section is making the case for why this particular problem is worth prioritizing with project bandwidth. A strong status quo section will (a) identify the target audience and (b) give specifics about the problems they are facing today. Sometimes it may be useful to start sketching out how you think those problems will be addressed by your change, as well, though it's not necessary.*
 
 ### The next few steps
 
 1) Merge the `#[autodiff]` fork.
-2) Expose the experimental Batching feature of Enzyme, preferably by a new contributor.
-3) Merge a MVP `#[offloading]` fork which is able to run simple functions using rayon parallelism on a GPU or TPU, showing a speed-up.
+2) Expose the experimental batching feature of Enzyme, preferably by a new contributor.
+3) Merge a MVP `#[offloading]` fork which is able to run simple functions using Rayon parallelism on a GPU or TPU, showing a speed-up.
+4) Complete `ptx-kernel` ABI ([tracking issue](https://github.com/rust-lang/rust/issues/38788)) and expose shared memory, shuffles, etc.
+5) Extend bitcode-linker (`LinkerFlavor::Llbc`) and related tooling to support AMDGPU and SPIR-V targets.
+6) Ergonomics for target-agnostic kernels and device functions, likely including Cargo `multidep` ([tracking issue](https://github.com/rust-lang/cargo/issues/10030)).
+7) Contribute to `std::simd` and the [struct target features RFC](https://github.com/rust-lang/rfcs/pull/3525).
+8) Explore safety for kernels (preferring library-based approaches that abstract away handling the raw unsafe kernel).
+9) This project is interested in collaborating with [Contracts and Invariants](Contracts-and-invariants.md), and would benefit from `generic_const_exprs` and `adt_const_params` (which are valuable for [dimensional analysis](https://github.com/Tehforsch/diman/) and similar invariant modeling). It would also benefit from [Seamless C Support](Seamless-C-Support.md).
 
 ### The "shiny future" we are working towards
 
-All three proposed features (batching, autodiff, offloading) can be combined and work nicely together. We have State-of-the-art libraries like faer to cover linear
-algebra and we start to see more and more libraries in other languages use Rust with these features as their backend. Cases which don't require interactive exploration also become more popular in pure Rust.
+Rust becomes a the premier language for reliable, high-performance numerical libraries and applications. A rich library ecosystem develops by a combination of incremental porting and fresh Rust libraries (exemplified by [faer](https://docs.rs/faer/) for linear algebra).
+
+Static analysis tools and advanced testing methods become widespread, increasing the reliability of HPC workflows, including distributed memory and GPU-intensive workloads. In rapidly-changing projects, new production runs more consistently succeed and produce meaningful results, reducing the need for debugging at scale.
+
+Programmers find they are more productive in Rust due to the tooling, stronger type system, dimensional analysis, and well-integrated autodiff, batching, and offloading. Maintainers find they can more confidently review contributions and spend less effort on portability quirks and build systems. While number of users increases, their community support burden declines because the compiler and integrated documentation helps users get it right before needing to ask. Younger contributors are more interested in sticking around an becoming maintainers because the work is more interesting, accessible, and enjoyable.
+
+Rust becomes more popular as a backend in interactive environments like Python, and resulting models can be more reliably deployed to production/edge environments as pure-Rust builds.
 
 ## Design axioms
 
@@ -47,22 +60,24 @@ algebra and we start to see more and more libraries in other languages use Rust 
 ### Offloading
 - We try to provide a safe, simple and opaque offloading interface. 
 - The "unit" of offloading is a function. 
-- We try to not expose explicit data movement if Ownership gives us enough information.
-- Users can offload functions which contains parallel CPU code, but do not have final control over how the paralelism will be translated to co-processors.
-- We accept that hand-written CUDA/ROCm/.. Kernels might be faster, but actively try to reduce differences.
+- We try to not expose explicit data movement if ownership gives us enough information.
+- Users can offload functions that contain parallel CPU code, but do not have final control over how the paralelism will be translated to co-processors.
+- We accept that hand-written CUDA/ROCm/.. kernels might be faster, but actively try to reduce differences.
 - We accept that we might need to provide additional control to the user to guide parallelism, if performance differences remain unacceptable large.
 - Offloaded code might not return exact same values as code executed on the CPU. We will work with t-(opsem?) to develop clear rules.
 
 ### Autodiff
-- We try to provide a fast autodiff interface which supports most autodiff features relevant for Scientific Computing.
-- The "unit" of autodiff is a function. 
+- We try to provide a fast autodiff interface that supports most autodiff features relevant for Scientific Computing.
+- The "unit" of autodiff is a function.
 - We acknowledge our responability since user-implemented autodiff without compiler knowledge might struggle to cover gaps in our features.
 - We have a fast solution ("git plumbing") with further optimization opportunities, but need to improve safety and usability ("git porcelain").
 - We need to teach users more about AutoDiff "pitfalls" and provide guides on how to handle them. [https://arxiv.org/abs/2305.07546](paper).
-- We do not support differentiating (inline) assembly. Users are expected to write Custom-Derivatives in such cases.
+- We do not support differentiating (inline) assembly. Users are expected to write "custom derivatives" in such cases.
 - We might refuse to expose certain features if they are too hard to use correctly and provide little gains (e.g. derivatives with respect to global vars).
 
-
+### GPU kernels
+- Decouple semantics of correctness (arch-independent) from arch-specific performance optimizations.
+- It should be possible to test "device" functions on the host.
 
 *Add your [design axioms][da] here. Design axioms clarify the constraints and tradeoffs you will use as you do your design work. These are most important for project goals where the route to the solution has significant ambiguity (e.g., designing a language feature or an API), as they communicate to your reader how you plan to approach the problem. If this goal is more aimed at implementation, then design axioms are less important. [Read more about design axioms][da].*
 
@@ -92,16 +107,16 @@ CI for the offloading work provided by LLNL or LLVM(?, see below).
 
 ### Outputs
 
-An `#[Offload]` rustc-builtin-macro which makes a function definition known to the LLVM offloading backend.
+An `#[offload]` rustc-builtin-macro which makes a function definition known to the LLVM offloading backend.
 A bikeshead `offload!([GPU1, GPU2, TPU1], foo(x, y,z));` macro which will execute function foo on the specified devices.
-An `#[Autodiff]` rustc-builtin-macro which differentiates a given function.
-A `#[Batching]` rustc-builtin-macro which fuses N function calls into one call, enabling better vectorization. 
+An `#[autodiff]` rustc-builtin-macro which differentiates a given function.
+A `#[batching]` rustc-builtin-macro which fuses N function calls into one call, enabling better vectorization. 
 
 ### Milestones
 
-- The first offloading step is the automatic copying of a slice or vector of floats to a Device and back.
+- The first offloading step is the automatic copying of a slice or vector of floats to a device and back.
 
-- The second offloading step is the automatic translation of a (default) Clone implementation to create a Host2Device and Device2Host copy implementation for user types.
+- The second offloading step is the automatic translation of a (default) `Clone` implementation to create a Host2Device and Device2Host copy implementation for user types.
 
 - The third offloading step is to run some embarassingly parallel Rust code (e.g. scalar times Vector) on the GPU. 
 
@@ -112,12 +127,12 @@ A `#[Batching]` rustc-builtin-macro which fuses N function calls into one call, 
 ## Frequently asked questions
 
 ### Why do you implement these features only on the LLVM Backend? 
-- Performance wise we have LLVM and GCC as performant backends. Modularity wise we have LLVM and especially Cranelift being nice to modify.
+- Performance-wise we have LLVM and GCC as performant backends. Modularity wise we have LLVM and especially Cranelift being nice to modify.
   It seems resonable that LLVM thus is the first backend to have support for new features in this field. Especially the offloading support 
-  should be supportable by other compiler backends, given pre-existing work like OpenMP Offloading and WebGPU.
+  should be supportable by other compiler backends, given pre-existing work like OpenMP offloading and WebGPU.
 
 ### Do these changes have to happen in the compiler?
-- No! Both features could be implemented in user-space, if the Rust compiler would support Reflection. In this case I could ask the compiler for the optimized backend IR for a given function. I would then need use either the AD or Offloading abilities of the LLVM library to modify the IR, generating a new function. The user would then be able to call that newly generated function. This would require some discussion on how we can have crates in the ecosystem that work with various LLVM versions, since crates are usually expected to have a MSRV, but the LLVM (and like GCC/Cranelift) backend will have breaking changes, unlike Rust.
+- No! Both features could be implemented in user-space, if the Rust compiler would support reflection. In this case I could ask the compiler for the optimized backend IR for a given function. I would then need use either the AD or offloading abilities of the LLVM library to modify the IR, generating a new function. The user would then be able to call that newly generated function. This would require some discussion on how we can have crates in the ecosystem that work with various LLVM versions, since crates are usually expected to have a MSRV, but the LLVM (and like GCC/Cranelift) backend will have breaking changes, unlike Rust.
 
 ### Batching? 
 - Offered by all autodiff tools, JAX has an extra command for it, whereas Enzyme (the autodiff backend) combines Batching with AutoDiff. We might want to split these since both have value on their own. Some libraries also offer Array-of-Struct vs Struct-of-Array features which are related but often have limited usability or performance when implemented in userspace. To be fair this is a less mature feature of Enzyme, so I could understand concerns. However, following the Autodiff work this feature can be exposed in very few (100?) loc. My main bieksheding thoughts where about whether we want to pass 3 batched args as [x1, x2, x3], (x1, x2, x3), or x1, x2, x3. Also it's a nice feature to get something started, once the main autodiff PR got merged.
