@@ -38,11 +38,7 @@ The other major effort in this area is Rust-GPU from Embark, which is more graph
 2) Expose the experimental batching feature of Enzyme, preferably by a new contributor.
 3) Merge a MVP `#[offloading]` fork which is able to run simple functions using Rayon parallelism on a GPU or TPU, showing a speed-up.
 4) Complete `ptx-kernel` ABI ([tracking issue](https://github.com/rust-lang/rust/issues/38788)) and expose shared memory, shuffles, etc.
-5) Extend bitcode-linker (`LinkerFlavor::Llbc`) and related tooling to support AMDGPU and SPIR-V targets.
-6) Ergonomics for target-agnostic kernels and device functions, likely including Cargo `multidep` ([tracking issue](https://github.com/rust-lang/cargo/issues/10030)).
-7) Contribute to `std::simd` and the [struct target features RFC](https://github.com/rust-lang/rfcs/pull/3525).
-8) Explore safety for kernels (preferring library-based approaches that abstract away handling the raw unsafe kernel).
-9) This project is interested in collaborating with [Contracts and Invariants](Contracts-and-invariants.md), and would benefit from `generic_const_exprs` and `adt_const_params` (which are valuable for [dimensional analysis](https://github.com/Tehforsch/diman/) and similar invariant modeling). It would also benefit from [Seamless C Support](Seamless-C-Support.md).
+5) Explore safety for kernels (preferring library-based approaches that abstract away handling the raw unsafe kernel).
 
 ### The "shiny future" we are working towards
 
@@ -78,6 +74,7 @@ Rust becomes more popular as a backend in interactive environments like Python, 
 ### GPU kernels
 - Decouple semantics of correctness (arch-independent) from arch-specific performance optimizations.
 - It should be possible to test "device" functions on the host.
+- Prioritize the needs of libraries; end-users who want simplicity can use Offloading above.
 
 *Add your [design axioms][da] here. Design axioms clarify the constraints and tradeoffs you will use as you do your design work. These are most important for project goals where the route to the solution has significant ambiguity (e.g., designing a language feature or an API), as they communicate to your reader how you plan to approach the problem. If this goal is more aimed at implementation, then design axioms are less important. [Read more about design axioms][da].*
 
@@ -97,20 +94,30 @@ Domain and CI for the autodiff work provided by MIT. Might be moved to the LLVM 
 Hardware for Benchmarks provided by LLNL and UofT.
 CI for the offloading work provided by LLNL or LLVM(?, see below).
 
+**Contributor:** jedbrown / Jed Brown
+
+Jed is a professor at the University of Colorado Boulder, and will be on sabbatical this academic year.
+He is a developer of numerical/scientific libraries and applications, and maintains some Rust crates and bindings to C libraries.
+
+Resources:
+* Development/testing server with NVIDIA and AMD GPUs that can be used for CI.
+
 ### Support needed from the project
 
-* Discussion on CI: It would be nice to test the Offloading support on at least all 3 mayor GPU Vendors. I am somewhat confident that I can find someone to set up something, but it would be good to discuss how to maintain this best in the longer term.
+* Discussion on CI: It would be nice to test the Offloading support on at least all 3 major GPU Vendors. I am somewhat confident that I can find someone to set up something, but it would be good to discuss how to maintain this best in the longer term.
 
-* Discussions on Design and Maintainability: I will probably keep asking questions to achieve a nice internal Design on zulip, which might take some time (either from lang/compiler, or other teams).
+* Discussions on Design and Maintainability: I will probably keep asking questions to achieve a nice internal design on zulip, which might take some time (either from lang/compiler, or other teams).
 
 ## Outputs and milestones
 
 ### Outputs
 
-An `#[offload]` rustc-builtin-macro which makes a function definition known to the LLVM offloading backend.
-A bikeshead `offload!([GPU1, GPU2, TPU1], foo(x, y,z));` macro which will execute function foo on the specified devices.
-An `#[autodiff]` rustc-builtin-macro which differentiates a given function.
-A `#[batching]` rustc-builtin-macro which fuses N function calls into one call, enabling better vectorization. 
+* An `#[offload]` rustc-builtin-macro which makes a function definition known to the LLVM offloading backend.
+* A bikeshead `offload!([GPU1, GPU2, TPU1], foo(x, y,z));` macro which will execute function foo on the specified devices.
+* An `#[autodiff]` rustc-builtin-macro which differentiates a given function.
+* A `#[batching]` rustc-builtin-macro which fuses N function calls into one call, enabling better vectorization.
+* Resolve outstanding issues with `ptx-kernel`, including ABI and shared memory.
+* Library support for safely exposing disjoint mutable access among GPU threads, and a proof-of-concept macro enabling safe kernels.
 
 ### Milestones
 
@@ -123,6 +130,8 @@ A `#[batching]` rustc-builtin-macro which fuses N function calls into one call, 
 - Fourth we have examples of how rayon code runs faster on a co-processor using offloading.
 
 - Stretch-goal. Combining Autodiff and Offloading in one example that runs differentiated code on a GPU.
+
+- Demonstrate performance of `ptx-kernel` for representative linear algebra and physics kernels.
 
 ## Frequently asked questions
 
@@ -148,6 +157,15 @@ I want all these features to be safe by default, and I am happy to not expose so
 As an Example, Enzyme can compute the derivative with respect to a global. Too niche, discouraged (and unsafe) for Rust. `¯\_(ツ)_/¯`
 
 How to parallelize your 3 nested for loops efficiently has been researched for decades. Lately there also has been some more work on how to translate different parallelism type efficiently, e.g. from GPUs to CPUs, or now maybe some rayon parllelism to GPUs? I am therefore not particualrily worried about Correctness. 
+
+### What other goals and issues are related?
+
+- In addition to `ptx-kernel`, this community is interested in support for AMDGPU and SPIR-V (Intel GPU) targets, with bitcode-linker (`LinkerFlavor::Llbc`) extended to support these targets.
+- When writing kernels for `nvptx64`, one typically uses a `build.rs` to build a crate for that target. This leads to poor quality error reporting. The developer experience would be improved by better support for artifact dependencies, e.g., Cargo `multidep` ([tracking issue](https://github.com/rust-lang/cargo/issues/10030)).
+- Although mostly focused on CPU (host) performance, `std::simd` and the likes of [struct target features RFC](https://github.com/rust-lang/rfcs/pull/3525) would be helpful to developers in this space.
+- This project is interested in collaborating with [Contracts and Invariants](Contracts-and-invariants.md), and would benefit from `generic_const_exprs` and `adt_const_params` (which are valuable for [dimensional analysis](https://github.com/Tehforsch/diman/) and similar invariant modeling).
+- Rust's scientific computing ecosystem would benefit substantially from [Seamless C Support](Seamless-C-Support.md).
+
 
 ### What do I do with this space?
 
